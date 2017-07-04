@@ -1,5 +1,5 @@
 {
-  "name": "midwest-membership-authenticate",
+  "name": "midwest-membership-auth",
   "version": "0.0.1",
   "description": "Login middleware",
   "main": "middleware/login.js",
@@ -8,14 +8,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/thebitmill/midwest-membership-authenticate.git"
+    "url": "git+https://github.com/thebitmill/midwest-membership-auth.git"
   },
   "author": "Linus Miller <lohfu@lohfu.io> (https://lohfu.io/)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/thebitmill/midwest-membership-authenticate/issues"
+    "url": "https://github.com/thebitmill/midwest-membership-auth/issues"
   },
-  "homepage": "https://github.com/thebitmill/midwest-membership-authenticate#readme",
+  "homepage": "https://github.com/thebitmill/midwest-membership-auth#readme",
   "dependencies": {
     "lodash": "^4.17.4"
   }
