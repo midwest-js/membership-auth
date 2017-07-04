@@ -1,80 +1,98 @@
-'use strict';
+'use strict'
 
-const _ = require('lodash');
+const _ = require('lodash')
+const express = require('express')
+const resolver = require('deep-equal-resolver')()
 
-const createError = require('midwest/util/create-error');
+const middleware = {
+  authenticate: require('./middleware/authenticate'),
+  changePasswordWithToken: require('./middleware/change-password-with-token'),
+  checkPasswordToken: require('./middleware/check-password-token'),
+  register: require('./middleware/register'),
+  sendResetPasswordLink: require('./middleware/send-reset-password-link'),
+  verifyEmail: require('./middleware/verify-email'),
+}
 
-// TODO should this be handled by the responder instead?
-// would require the user to create his own responder middleware if he isn't
-// using a global responder
-const responses = {
-  json(req, res, user) {
-    if (req.session.previousUrl) res.set('Location', req.session.previousUrl);
+const authentication = {
+  local: require('./authentication/local'),
+  social: require('./authentication/social'),
+}
 
-    res.json(user);
-  },
+const redirect = require('midwest/factories/redirect')
 
-  html(req, res) {
-    res.redirect(req.session.previousUrl || '/');
-  },
-};
+module.exports = exports = _.memoize((state) => {
+  const flash = require('connect-flash')()
+  const router = new express.Router()
 
-module.exports = _.memoize((config) => (req, res, next) => {
-  const { email, password, remember } = req.body;
+  router
+    .post('/login', exports.local({
+      errors: state.config.errors,
+      hook: state.hooks.login,
+      checkPassword: state.hooks.checkPassword,
+      getAuthenticationDetails: state.handlers.users.getAuthenticationDetails,
+    }))
+    .post('/register', flash, exports.register({
+      generateToken: state.hooks.generateToken,
+      db: state.db,
+      handlers: {
+        createUser: state.handlers.users.create,
+        findUser: state.handlers.users.findOne,
+        findMatchingAdmissions: state.handlers.admissions.findMatches,
+        findInviteByEmail: state.handlers.invites.findByEmail,
+      },
+      errors: state.config.errors,
+    }))
+    // .post('/send-reset-password-link', exports.sendResetPasswordLink(state))
+    // .post('/reset-password', exports.changePasswordWithToken(state))
+    .post('/verify', exports.verifyEmail(state))
 
-  config.getAuthenticationDetails(email.toLowerCase()).then((user) => {
-    let error;
+  if (state.providers && state.providers.length) {
+    state.providers.forEach((provider) => {
+      router.get('/' + provider.name, flash, exports.social({
+        errors: state.config.errors,
+        hooks: state.hooks.login,
+        findUserByToken: state.handlers.users.findByToken,
+        provider,
+      }))
+    })
+  }
 
-    if (user) {
-      if (!user.password) {
-        error = config.errors.login.notLocal;
-      } else if (!user.emailVerifiedAt) {
-        error = config.errors.login.emailNotVerified;
-      } else if (user.blockedAt) {
-        error = config.errors.login.blocked;
-      } else if (user.bannedAt) {
-        error = config.errors.login.banned;
-      } else {
-        return config.checkPassword(password, user.password).then(() => {
-          if (remember) {
-            if (config.remember.expires) {
-              req.session.cookie.expires = config.remember.expires;
-            } else {
-              req.session.cookie.maxAge = config.remember && config.remember.maxAge;
-            }
-          }
+  return router
+}, resolver)
 
-          let promise = config.login(req, user);
+exports.register = middleware.register
 
-          if (config.hooks && config.hooks.login) {
-            promise = promise.then(config.hooks.login);
-          }
+exports.local = (state) => {
+  return middleware.authenticate({
+    errors: state.errors,
+    hook: state.hook,
+    authenticate: authentication.local(state),
+  })
+}
 
-          return promise.then(() => {
-            delete user.password;
+exports.social = (state) => {
+  return middleware.authenticate({
+    errors: state.config.errors,
+    hook: state.hooks,
+    authenticate: authentication.social({
+      provider: state.provider,
+      findUserByToken: state.findByTokenUser,
+    }),
+  })
+}
 
-            res.status(200);
+exports.checkPasswordToken = (...args) => {
+  return middleware.checkPasswordToken(...args)
+}
 
-            responses[req.accepts(['json', 'html'])](req, res, user);
-          });
-        });
-      }
-    } else {
-      error = config.errors.login.noUserFound;
-    }
+exports.changePasswordWithToken = (...args) => {
+  return middleware.changePasswordWithToken(...args)
+}
 
-    throw createError(...error);
-  }).catch((err) => {
-    if (req.body.password) {
-      req.body.password = 'DELETED';
-    }
+exports.sendResetPasswordLink = (...args) => {
+  return middleware.sendResetPasswordLink(...args)
+}
 
-    // TODO this should probably not even be sent to the server
-    // or maybe it should, especially if non-js login is required
-    if (req.body.confirmPassword) {
-      req.body.confirmPassword = 'DELETED';
-    }
-
-    next(err);
-  });
-});
+exports.verifyEmail = (...args) => {
+  return middleware.verifyEmail(...args)
+}
